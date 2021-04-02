@@ -67,9 +67,6 @@ get_objectid(Name, DevAddr, ChannelId) ->
             {ProductId, DeviceId, DevAddr}
     end.
 
-%%      SEND_SUCCESS		发送成功，但设备无执行结果返回
-%%*		SEND_FAIL_OFFLINE	发送失败，设备不在线
-%%*		SEND_FAIL_DISALLOW	发送失败，授权失败或设备不存在
 send_to_device(Arg, _Context) ->
     #{<<"instruct_type">> := Type,
         <<"hardware_auth">> := _Auth,
@@ -217,17 +214,17 @@ create_device(DeviceId, DTUIP, Name, DevAddr, Role) ->
                         <<"write">> => true
                     }
                 },
-                <<"basedata">> => #{<<"yysId">> => <<"09">>, <<"auth">> => <<"12345678">>},
+                <<"basedata">> => #{<<"auth">> => <<"12345678">>},
                 <<"status">> => <<"ONLINE">>,
                 <<"location">> => #{<<"__type">> => <<"GeoPoint">>, <<"longitude">> => 120.161324, <<"latitude">> => 30.262441},
                 <<"brand">> => <<Name/binary>>,
                 <<"devModel">> => DevType
             },
             case shuwa_shadow:create_device(Requests) of
-                {ok, #{<<"basedata">> := #{<<"yysId">> := YysId1, <<"auth">> := Auth}}} ->
-                    shuwa_data:insert({DeviceId, sukedev}, {YysId1, Auth});
+                {ok, #{<<"basedata">> := #{ <<"auth">> := Auth}}} ->
+                    shuwa_data:insert({DeviceId, meterdev}, {Auth});
                 _ ->
-                    shuwa_data:insert({DeviceId, sukedev}, {<<"09">>, <<"12345678">>})
+                    shuwa_data:insert({DeviceId, meterdev}, {<<"12345678">>})
             end;
         _ ->
             shuwa_parse:save_to_cache(#{
@@ -245,7 +242,7 @@ create_device(DeviceId, DTUIP, Name, DevAddr) ->
     {_, _, Role} = shuwa_data:get({suke, Name}),
     case shuwa_data:get({DeviceId, sukedev}) of
         not_find ->
-            {ProductId, DevType, _} = shuwa_data:get({suke, Name}),
+            {ProductId, DevType, _} = shuwa_data:get({meter, Name}),
             Requests = #{
                 <<"devaddr">> => DevAddr,
                 <<"name">> => <<Name/binary, DevAddr/binary>>,
@@ -258,17 +255,17 @@ create_device(DeviceId, DTUIP, Name, DevAddr) ->
                         <<"write">> => true
                     }
                 },
-                <<"basedata">> => #{<<"yysId">> => <<"09">>, <<"auth">> => <<"12345678">>},
+                <<"basedata">> => #{<<"auth">> => <<"12345678">>},
                 <<"status">> => <<"ONLINE">>,
                 <<"location">> => #{<<"__type">> => <<"GeoPoint">>, <<"longitude">> => 120.161324, <<"latitude">> => 30.262441},
                 <<"brand">> => <<Name/binary>>,
                 <<"devModel">> => DevType
             },
             case shuwa_shadow:create_device(Requests) of
-                {ok, #{<<"basedata">> := #{<<"yysId">> := YysId1, <<"auth">> := Auth}}} ->
-                    shuwa_data:insert({DeviceId, sukedev}, {YysId1, Auth});
+                {ok, #{<<"basedata">> := #{<<"auth">> := Auth}}} ->
+                    shuwa_data:insert({DeviceId, meterdev}, {Auth});
                 _ ->
-                    shuwa_data:insert({DeviceId, sukedev}, {<<"09">>, <<"12345678">>})
+                    shuwa_data:insert({DeviceId, meterdev}, { <<"12345678">>})
             end;
         _ ->
             shuwa_parse:save_to_cache(#{

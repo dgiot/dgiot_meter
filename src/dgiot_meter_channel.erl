@@ -220,14 +220,7 @@ handle_info({tcp, Buff}, #tcp{state = #state{id = ChannelId, heartcount = _Heart
         {_Buff1, [#{<<"dtu">> := DtuAddr1, <<"instruct_id">> := Id} = Msg | _]} when DtuAddr1 =/= <<>> ->
             case get(Id) of
                 undefined -> pass;
-                Pid ->
-                    case dgiot_meter:get_name(DtuAddr1) of
-                        {_Name1, _DevAddr1, zh} ->
-                            Pid ! {hardware_msg, Msg};
-                        {_Name2, _DevAddr2, en} ->
-                            Msg1 = maps:without([<<"name">>, <<"role">>], Msg),
-                            Pid ! {hardware_msg, Msg1}
-                    end
+                Pid -> Pid ! {hardware_msg, Msg}
             end;
         _ ->
             pass
