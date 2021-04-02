@@ -23,7 +23,6 @@
     get_objectid/3,
     get_name/1,
     send_to_device/2,
-    do_push/4,
     create_device/5,
     create_device/4,
     get_Dict/0,
@@ -159,28 +158,6 @@ value_to_key(Value) ->
             Key
     end.
 
-do_push(Url, Dev, Params, Paras) ->
-    Time = shuwa_datetime:format(<<"YYYYMMDDHHNNSS">>),
-    Bin = shuwa_httpc:urlencode(<<Dev/binary, "+", Time/binary, "+", Paras/binary>>),
-    Data = <<Params/binary, "=", Bin/binary>>,
-%%    Url1 = <<Url/binary, "?", Data/binary>>,
-    Url1 = shuwa_utils:to_list(Url),
-    Data1 = shuwa_utils:to_list(Data),
-    case httpc:request(post, {Url1, [], "application/x-www-form-urlencoded", Data1}, [{timeout, 5000}, {connect_timeout, 10000}], [{body_format, binary}]) of
-        {ok, {{_, 200, "OK"}, _List, <<"SUCCESS">>}} ->
-            lager:info("SUCC PUSH MSG ~s POST:~s", [Url1, Data1]),
-            ok;
-        {ok, {{_, 404, _}, _List, ResBody}} ->
-            lager:info("ERROR PUSH MSG ~s POST:~s -> ~ts", [Url1, Data1, ResBody]),
-            ok;
-        {ok, {{_, _HTTPCode, _}, _List, ResBody}} ->
-            lager:info("ERROR PUSH MSG ~s POST:~s -> ~ts", [Url1, Data1, ResBody]),
-            error;
-        {error, Reason} ->
-            Err = list_to_binary(io_lib:format("~p", [Reason])),
-            lager:info("ERROR PUSH MSG ~s POST:~s -> ~s", [Url1, Data1, Err]),
-            error
-    end.
 
 get_Dict() ->
     Ids = case shuwa_parse:query_object(<<"Dict">>, #{<<"where">> => #{<<"type">> => <<"dict_template">>}}) of
