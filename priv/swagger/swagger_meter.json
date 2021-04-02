@@ -1,0 +1,80 @@
+{
+  "definitions": {},
+  "paths": {
+    "/server/send": {
+      "get": {
+        "basePath":"/",
+        "security": [],
+        "description": "发送指令",
+        "parameters": [
+          {
+            "description": "指令类型ZXQK:读表 ,MMSQ:购电,SKSKM:购负电,MMYQ:强制断电,KSQB:上电,ZXQK:卡授权,SKSKM:远程开锁 ,KSQB:卡型注消 ,RDXX :读开门记录",
+            "in": "query",
+            "name": "instruct_type",
+            "required": true,
+            "type": "string",
+            "default":"ZXQK"
+          },
+          {
+            "description": "授权码:每台设备都有唯一的授权码（厂家提供）",
+            "in": "query",
+            "name": "hardware_auth",
+            "required": true,
+            "type": "string",
+            "default":"53393692"
+          },
+          {
+            "description": "设备编号:接受指令的设备编号（厂家提供）老设备（名欧恩机FE1200EE），新设备（YXZK0A0405DB）",
+            "in": "query",
+            "name": "hardware_number",
+            "required": true,
+            "type": "string",
+            "default":"YXZK0A0405DB"
+          },
+          {
+            "description": "设备路径:指令送达的子设备名或路径",
+            "in": "query",
+            "name": "hardware_path",
+            "required": true,
+            "type": "string",
+            "default":"名欧电表19080118"
+          },
+          {
+            "description": "指令ID:应用端指令ID，由发送端自定义，作为指令标识",
+            "in": "query",
+            "name": "instruct_id",
+            "required": true,
+            "type": "string",
+            "default":"000254"
+          },
+          {
+            "description": "指令参数:子参数之间以+号分隔 7100+100+12+40+20",
+            "in": "query",
+            "name": "instruct_paras",
+            "required": true,
+            "type": "string",
+            "default":"7100"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns instance data: SEND_SUCCESS 已发送成功，硬件无返回\nSEND_FAIL_OFFLINE 发送失败，未找到硬件\nSEND_FAIL_DISALLOW 发送失败，指令授权失败"
+          },
+          "404": {
+            "description": "object not found"
+          }
+        },
+        "summary": "指令控制",
+        "tags": [
+          "SuKe"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "速客智能控制",
+      "name": "SuKe"
+    }
+  ]
+}

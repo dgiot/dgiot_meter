@@ -1,0 +1,20 @@
+[
+  {
+    "name": "server_login",
+    "help": "服务收到登陆报文统计",
+    "type": "gauge",
+    "labels": []
+  },
+  {
+    "name": "server_login_ack",
+    "help": "服务发送注册报文统计",
+    "type": "gauge",
+    "labels": []
+  },
+  {
+    "name": "server_register",
+    "help": "服务收到注册报文统计",
+    "type": "gauge",
+    "labels": []
+  }
+]
