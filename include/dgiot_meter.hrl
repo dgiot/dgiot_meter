@@ -15,3 +15,12 @@
 %%--------------------------------------------------------------------
 
 -define(METER, <<"METER">>).
+
+-record(state, {
+    id,
+    env = #{},
+    buff_size = 1024000,
+    heartcount = 0,
+    devaddr = <<>>,
+    productid = []
+}).

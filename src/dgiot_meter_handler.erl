@@ -74,17 +74,6 @@ handle(OperationID, Args, Context, Req) ->
 %%% 内部函数 Version:API版本
 %%%===================================================================
 
-%% SuKe 概要: 指令控制 描述:发送指令
-%% OperationId:get_server_send
-%% 请求:GET /server/send
-do_request(get_server_send, Arg, Context, _Req) ->
-    case dgiot_meter:send_to_device(Arg, Context) of
-        {ok, Success} ->
-            {ok, Success};
-        {error, Reason} ->
-            {400, Reason}
-    end;
-
 %%  服务器不支持的API接口
 do_request(_OperationId, _Args, _Context, _Req) ->
     lager:info("_OperationId:~p~n", [_OperationId]),
