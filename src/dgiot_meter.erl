@@ -18,92 +18,43 @@
 -module(dgiot_meter).
 -include("dgiot_meter.hrl").
 -export([
-    create_device/5,
-    create_device/4
+    create_dtu/3,
+    create_meter/4
 ]).
 
 -define(APP, ?MODULE).
 
-%%老设备
-create_device(DeviceId, DTUIP, Name, DevAddr, Role) ->
-    case shuwa_data:get({DeviceId, sukedev}) of
-        not_find ->
-            {ProductId, DevType, _} = shuwa_data:get({suke, Name}),
-            Requests = #{
-                <<"devaddr">> => DevAddr,
-                <<"name">> => <<Name/binary, Role/binary, DevAddr/binary>>,
-                <<"ip">> => DTUIP,
-                <<"isEnable">> => true,
-                <<"product">> => ProductId,
-                <<"ACL">> => #{
-                    <<"role:", Role/binary>> => #{
-                        <<"read">> => true,
-                        <<"write">> => true
-                    }
-                },
-                <<"basedata">> => #{<<"auth">> => <<"12345678">>},
-                <<"status">> => <<"ONLINE">>,
-                <<"location">> => #{<<"__type">> => <<"GeoPoint">>, <<"longitude">> => 120.161324, <<"latitude">> => 30.262441},
-                <<"brand">> => <<Name/binary>>,
-                <<"devModel">> => DevType
-            },
-            case shuwa_shadow:create_device(Requests) of
-                {ok, #{<<"basedata">> := #{ <<"auth">> := Auth}}} ->
-                    shuwa_data:insert({DeviceId, meterdev}, {Auth});
-                _ ->
-                    shuwa_data:insert({DeviceId, meterdev}, {<<"12345678">>})
-            end;
-        _ ->
-            shuwa_parse:save_to_cache(#{
-                pid => self(),
-                action => online,
-                <<"method">> => <<"PUT">>,
-                <<"path">> => <<"/classes/Device/", DeviceId/binary>>,
-                <<"body">> => #{<<"ip">> => DTUIP, <<"status">> => <<"ONLINE">>}
-            })
-%%            shuwa_parse:update_object(<<"Device">>, DeviceId, #{<<"ip">> => DTUIP, <<"status">> => <<"ONLINE">>})
-    end.
-
 %%新设备
-create_device(DeviceId, DTUIP, Name, DevAddr) ->
-    {_, _, Role} = shuwa_data:get({suke, Name}),
-    case shuwa_data:get({DeviceId, sukedev}) of
-        not_find ->
-            {ProductId, DevType, _} = shuwa_data:get({meter, Name}),
-            Requests = #{
-                <<"devaddr">> => DevAddr,
-                <<"name">> => <<Name/binary, DevAddr/binary>>,
-                <<"ip">> => DTUIP,
-                <<"isEnable">> => true,
-                <<"product">> => ProductId,
-                <<"ACL">> => #{
-                    <<"role:", Role/binary>> => #{
-                        <<"read">> => true,
-                        <<"write">> => true
-                    }
-                },
-                <<"basedata">> => #{<<"auth">> => <<"12345678">>},
-                <<"status">> => <<"ONLINE">>,
-                <<"location">> => #{<<"__type">> => <<"GeoPoint">>, <<"longitude">> => 120.161324, <<"latitude">> => 30.262441},
-                <<"brand">> => <<Name/binary>>,
-                <<"devModel">> => DevType
-            },
-            case shuwa_shadow:create_device(Requests) of
-                {ok, #{<<"basedata">> := #{<<"auth">> := Auth}}} ->
-                    shuwa_data:insert({DeviceId, meterdev}, {Auth});
-                _ ->
-                    shuwa_data:insert({DeviceId, meterdev}, { <<"12345678">>})
-            end;
-        _ ->
-            shuwa_parse:save_to_cache(#{
-                pid => self(),
-                action => online,
-                <<"method">> => <<"PUT">>,
-                <<"path">> => <<"/classes/Device/", DeviceId/binary>>,
-                <<"body">> => #{<<"ip">> => DTUIP, <<"status">> => <<"ONLINE">>}
-            })
-%%            shuwa_parse:update_object(<<"Device">>, DeviceId, #{<<"ip">> => DTUIP, <<"status">> => <<"ONLINE">>})
-    end.
+create_dtu(DtuAddr, ChannelId, DTUIP) ->
+    lager:info("~p",[shuwa_data:get({dtu, ChannelId})]),
+    {ProductId, Acl, _Properties} = shuwa_data:get({dtu, ChannelId}),
+    Requests = #{
+        <<"devaddr">> => DtuAddr,
+        <<"name">> => <<"DTU_", DtuAddr/binary>>,
+        <<"ip">> => DTUIP,
+        <<"isEnable">> => true,
+        <<"product">> => ProductId,
+        <<"ACL">> => Acl,
+        <<"status">> => <<"ONLINE">>,
+        <<"brand">> => <<"DTU", DtuAddr/binary>>,
+        <<"devModel">> => <<"DTU_">>
+    },
+    shuwa_shadow:create_device(Requests).
 
-
+create_meter(MeterAddr, ChannelId, DTUIP, DtuAddr) ->
+    lager:info("~p",[shuwa_data:get({meter, ChannelId})]),
+    {ProductId, Acl, _Properties} = shuwa_data:get({meter, ChannelId}),
+    Requests = #{
+        <<"devaddr">> => MeterAddr,
+        <<"name">> => <<"Meter_", MeterAddr/binary>>,
+        <<"ip">> => DTUIP,
+        <<"isEnable">> => true,
+        <<"product">> => ProductId,
+        <<"ACL">> => Acl,
+        <<"route">> => #{DtuAddr => MeterAddr},
+        <<"status">> => <<"ONLINE">>,
+        <<"brand">> => <<"Meter", MeterAddr/binary>>,
+        <<"devModel">> => <<"Meter">>
+    },
+    shuwa_shadow:create_device(Requests).
 

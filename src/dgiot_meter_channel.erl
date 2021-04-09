@@ -116,15 +116,22 @@ start(ChannelId, ChannelArgs) ->
 %% 通道初始化
 init(?TYPE, ChannelId, #{
     <<"port">> := Port,
-    <<"product">> := Products
-} = Args) ->
-    lager:info("~p",[Products]),
-    shuwa_data:set_consumer(ChannelId, 200),
+    <<"product">> := Products}) ->
+    lists:map(fun(X) ->
+        lager:info("X ~p ChannelId ~p",[X,ChannelId]),
+        case X of
+            {ProductId, #{<<"ACL">> := Acl, <<"nodeType">> := 1, <<"thing">> := Thing}} ->
+                shuwa_data:insert({dtu, ChannelId}, {ProductId, Acl, Thing});
+            {ProductId, #{<<"ACL">> := Acl, <<"thing">> := #{<<"properties">> := Properties}}} ->
+                shuwa_data:insert({meter, ChannelId}, {ProductId, Acl, Properties})
+        end
+               end, Products),
+    shuwa_metrics:start(dgiot_meter),
+    shuwa_data:set_consumer(ChannelId, 20),
     State = #state{
-        id = ChannelId,
-        buff_size = maps:get(<<"buff_size">>, Args, 1024000)
+        id = ChannelId
     },
-    {ok, State, dgiot_meter_tcp:start(Port,State)};
+    {ok, State, dgiot_meter_tcp:start(Port, State)};
 
 init(?TYPE, _ChannelId, _Args) ->
     {ok, #{}, #{}}.
