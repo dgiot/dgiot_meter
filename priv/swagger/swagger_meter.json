@@ -1,67 +1,6 @@
 {
   "definitions": {},
   "paths": {
-    "/server/send": {
-      "get": {
-        "basePath":"/",
-        "security": [],
-        "description": "发送指令",
-        "parameters": [
-          {
-            "description": "指令类型ZXQK:读表 ,MMSQ:购电,SKSKM:购负电,MMYQ:强制断电,KSQB:上电",
-            "in": "query",
-            "name": "instruct_type",
-            "required": true,
-            "type": "string",
-            "default":"ZXQK"
-          },
-          {
-            "description": "授权码:每台设备都有唯一的授权码（厂家提供）",
-            "in": "query",
-            "name": "hardware_auth",
-            "required": true,
-            "type": "string",
-            "default":"53393692"
-          },
-          {
-            "description": "设备编号:DTU地址",
-            "in": "query",
-            "name": "dtu",
-            "required": true,
-            "type": "string",
-            "default":"12345678"
-          },
-          {
-            "description": "设备路径:电表地址",
-            "in": "query",
-            "name": "meter",
-            "required": true,
-            "type": "string",
-            "default":"1234556"
-          },
-          {
-            "description": "指令ID:应用端指令ID，由发送端自定义，作为指令标识",
-            "in": "query",
-            "name": "instruct_id",
-            "required": true,
-            "type": "string",
-            "default":"000254"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Returns instance data: SEND_SUCCESS 已发送成功，硬件无返回\nSEND_FAIL_OFFLINE 发送失败，未找到硬件\nSEND_FAIL_DISALLOW 发送失败，指令授权失败"
-          },
-          "404": {
-            "description": "object not found"
-          }
-        },
-        "summary": "指令控制",
-        "tags": [
-          "METER"
-        ]
-      }
-    }
   },
   "tags": [
     {
