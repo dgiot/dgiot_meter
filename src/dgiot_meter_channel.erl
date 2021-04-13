@@ -124,7 +124,7 @@ init(?TYPE, ChannelId, #{
             {ProductId, #{<<"ACL">> := Acl, <<"thing">> := #{<<"properties">> := Properties}}} ->
                 shuwa_data:insert({meter, ChannelId}, {ProductId, Acl, Properties})
         end
-               end, Products),
+              end, Products),
     shuwa_metrics:start(dgiot_meter),
     shuwa_data:set_consumer(ChannelId, 20),
     State = #state{

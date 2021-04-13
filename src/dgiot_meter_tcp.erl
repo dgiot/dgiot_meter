@@ -17,7 +17,6 @@
 -author("johnliu").
 -include_lib("shuwa_framework/include/shuwa_socket.hrl").
 -include("dgiot_meter.hrl").
-
 %% API
 -export([start/2]).
 
@@ -103,4 +102,3 @@ terminate(_Reason, _TCPState) ->
 
 code_change(_OldVsn, TCPState, _Extra) ->
     {ok, TCPState}.
-
