@@ -57,4 +57,4 @@ create_meter(MeterAddr, ChannelId, DTUIP, DtuAddr) ->
     },
     shuwa_shadow:create_device(Requests),
     {DtuProductId, _, _} = shuwa_data:get({dtu, ChannelId}),
-    shuwa_task:save_route(DtuProductId, DtuAddr, ProductId, MeterAddr).
+    shuwa_task:save_pnque(DtuProductId, DtuAddr, ProductId, MeterAddr).

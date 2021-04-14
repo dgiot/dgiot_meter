@@ -20,5 +20,6 @@
     id,
     env = #{},
     dtuaddr = <<>>,
-    step = login
+    step = login,
+    ref = undefined
 }).

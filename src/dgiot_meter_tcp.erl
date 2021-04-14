@@ -33,59 +33,70 @@ init(TCPState) ->
     shuwa_metrics:inc(dgiot_meter, <<"dtu_login">>, 1),
     {ok, TCPState}.
 
-%%设备登录报文
-handle_info({tcp, DtuAddr}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = <<>>} = State} = TCPState)
-    when byte_size(DtuAddr) == 15 ->
+%%设备登录报文，登陆成功后，开始搜表
+handle_info({tcp, DtuAddr}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = <<>>} = State} = TCPState) when byte_size(DtuAddr) == 15 ->
     lager:info("DevAddr ~p ChannelId ~p", [DtuAddr, ChannelId]),
     DTUIP = shuwa_evidence:get_ip(Socket),
     dgiot_meter:create_dtu(DtuAddr, ChannelId, DTUIP),
-    erlang:send_after(1000, self(), search_meter),
-    {noreply, TCPState#tcp{buff = <<>>, state = State#state{dtuaddr = DtuAddr, step = search_meter}}};
+    {Ref, Step} = shuwa_smartmeter:search_meter(tcp, undefined, TCPState, 1),
+    {noreply, TCPState#tcp{buff = <<>>, state = State#state{dtuaddr = DtuAddr, ref = Ref, step = Step}}};
 
-handle_info({tcp, ErrorBuff}, #tcp{state = #state{dtuaddr = <<>>} = State} = TCPState) ->
+%%设备登录异常报文丢弃
+handle_info({tcp, ErrorBuff}, #tcp{state = #state{dtuaddr = <<>>}} = TCPState) ->
     lager:info("ErrorBuff ~p ", [ErrorBuff]),
-    {noreply, TCPState#tcp{buff = <<>>, state = State#state{step = search_meter}}};
-
-%%设备指令返回报文
-handle_info({tcp, Buff}, #tcp{socket = Socket,
-    state = #state{id = ChannelId, dtuaddr = DtuAddr, step = search_meter} = State} = TCPState) ->
-    lager:info("Buff ~p", [shuwa_utils:binary_to_hex(Buff)]),
-    [#{<<"addr">> := Addr} | _] = Frames = shuwa_smartmeter:parse_frame(dlt645, Buff, []),
-    lager:info("Frames ~p", [Frames]),
-    DTUIP = shuwa_evidence:get_ip(Socket),
-    dgiot_meter:create_meter(shuwa_utils:binary_to_hex(Addr), ChannelId, DTUIP, DtuAddr),
-    {noreply, TCPState#tcp{buff = <<>>, state = State#state{step = shuwa_smartmeter:search_meter(tcp, TCPState,1)}}};
-
-handle_info({tcp, Buff}, #tcp{state = #state{id = ChannelId, step = read_meter}} = TCPState) ->
-    [#{<<"addr">> := Addr, <<"value">> := Value} | _] = shuwa_smartmeter:parse_frame(dlt645, Buff, []),
-    {ProductId, _ACL, _Properties} = shuwa_data:get({meter, ChannelId}),
-    DevAddr = shuwa_utils:binary_to_hex(Addr),
-    Topic = <<"thing/", ProductId/binary, "/", DevAddr/binary, "/post">>,
-    shuwa_mqtt:publish(DevAddr, Topic, jsx:encode(Value)),
     {noreply, TCPState#tcp{buff = <<>>}};
 
-handle_info(search_meter, #tcp{state = State} = TCPState) ->
-    {noreply, TCPState#tcp{buff = <<>>, state = State#state{step = shuwa_smartmeter:search_meter(tcp, TCPState,1)}}};
 
-%%API发消息
+%%定时器触发搜表
+handle_info(search_meter, #tcp{state =  #state{ref = Ref} = State} = TCPState) ->
+    {NewRef, Step} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
+    {noreply, TCPState#tcp{buff = <<>>, state = State#state{ref = NewRef, step = Step}}};
+
+%%ACK报文触发搜表
+handle_info({tcp, Buff}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = DtuAddr, ref = Ref, step = search_meter} = State} = TCPState) ->
+    lager:info("from_dev: search_meter Buff ~p", [shuwa_utils:binary_to_hex(Buff)]),
+    lists:map(fun(X) ->
+        case X of
+            #{<<"addr">> := Addr} ->
+                lager:info("from_dev: search_meter Addr ~p", [Addr]),
+                DTUIP = shuwa_evidence:get_ip(Socket),
+                dgiot_meter:create_meter(shuwa_utils:binary_to_hex(Addr), ChannelId, DTUIP, DtuAddr);
+            _ ->
+                pass %%异常报文丢弃
+        end
+              end, shuwa_smartmeter:parse_frame(dlt645, Buff, [])),
+    {NewRef, Step} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
+    {noreply, TCPState#tcp{buff = <<>>, state = State#state{ref = NewRef, step = Step}}};
+
+%%接受抄表任务命令抄表
 handle_info({deliver, _Topic, Msg}, #tcp{state = #state{id = ChannelId, step = read_meter}} = TCPState) ->
     case binary:split(shuwa_mqtt:get_topic(Msg), <<$/>>, [global, trim]) of
-        [<<"thing">>, ProductId, DevAddr] ->
+        [<<"thing">>, _ProductId, _DevAddr] ->
             #{<<"thingdata">> := ThingData} = jsx:decode(shuwa_mqtt:get_payload(Msg), [{labels, binary}, return_maps]),
-            lager:info("ThingData ~p ProductId ~p , DevAddr ~p", [ThingData, ProductId, DevAddr]),
             Payload = shuwa_smartmeter:to_frame(ThingData),
-            lager:info("Payload ~p", [shuwa_utils:binary_to_hex(Payload)]),
-            shuwa_tcp_server:send(TCPState, Payload),
-            shuwa_bridge:send_log(ChannelId, "from_task: ~ts:  ~ts ", [_Topic, unicode:characters_to_list(shuwa_mqtt:get_payload(Msg))]);
+            shuwa_bridge:send_log(ChannelId, "from_task: ~ts:  ~ts ", [_Topic, unicode:characters_to_list(shuwa_mqtt:get_payload(Msg))]),
+            lager:info("task->dev: Payload ~p", [shuwa_utils:binary_to_hex(Payload)]),
+            shuwa_tcp_server:send(TCPState, Payload);
         _ ->
             pass
     end,
     {noreply, TCPState};
 
-handle_info({deliver, _Topic, Msg}, TCPState) ->
-    lager:info("Payload ~p", [shuwa_mqtt:get_payload(Msg)]),
-    {noreply, TCPState};
+%% 接收抄表任务的ACK报文
+handle_info({tcp, Buff}, #tcp{state = #state{id = ChannelId, step = read_meter}} = TCPState) ->
+    case shuwa_smartmeter:parse_frame(dlt645, Buff, []) of
+        [#{<<"addr">> := Addr, <<"value">> := Value} | _] ->
+            case shuwa_data:get({meter, ChannelId}) of
+                {ProductId, _ACL, _Properties} -> DevAddr = shuwa_utils:binary_to_hex(Addr),
+                    Topic = <<"thing/", ProductId/binary, "/", DevAddr/binary, "/post">>,
+                    shuwa_mqtt:publish(DevAddr, Topic, jsx:encode(Value));
+                _ -> pass
+            end;
+        _ -> pass
+    end,
+    {noreply, TCPState#tcp{buff = <<>>}};
 
+%% 异常报文丢弃
 %% {stop, TCPState} | {stop, Reason} | {ok, TCPState} | ok | stop
 handle_info(_Info, TCPState) ->
     {noreply, TCPState}.
