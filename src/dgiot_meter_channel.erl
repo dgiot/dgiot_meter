@@ -119,10 +119,15 @@ init(?TYPE, ChannelId, #{
     <<"product">> := Products}) ->
     lists:map(fun(X) ->
         case X of
-            {ProductId, #{<<"ACL">> := Acl, <<"nodeType">> := 1, <<"thing">> := #{<<"properties">> := Properties}}} ->
+            {ProductId, #{<<"ACL">> := Acl, <<"nodeType">> := 1}} ->
+                {ok, #{<<"thing">> := #{<<"properties">> := Properties} }} = shuwa_shadow:lookup_prod(ProductId),
                 shuwa_data:insert({dtu, ChannelId}, {ProductId, Acl, Properties});
-            {ProductId, #{<<"ACL">> := Acl, <<"thing">> := #{<<"properties">> := Properties}}} ->
-                shuwa_data:insert({meter, ChannelId}, {ProductId, Acl, Properties})
+            {ProductId, #{<<"ACL">> := Acl}} ->
+                {ok, #{<<"thing">> := #{<<"properties">> := Properties} }} = shuwa_shadow:lookup_prod(ProductId),
+                shuwa_data:insert({meter, ChannelId}, {ProductId, Acl, Properties});
+            _ ->
+                lager:info("X ~p",[X]),
+                pass
         end
               end, Products),
     shuwa_metrics:start(dgiot_meter),
