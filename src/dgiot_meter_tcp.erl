@@ -50,7 +50,7 @@ handle_info({tcp, ErrorBuff}, #tcp{state = #state{dtuaddr = <<>>}} = TCPState) -
 
 %%定时器触发搜表
 handle_info(search_meter, #tcp{state =  #state{ref = Ref,id = ChannelId, dtuaddr = DtuAddr} = State} = TCPState) ->
-    {NewRef, Step,Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
+    {NewRef, Step,_Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
 %%    lager:info("timeout: DevAddr ~p ChannelId ~p Payload ~p", [DtuAddr, ChannelId,shuwa_utils:binary_to_hex(Payload)]),
     {noreply, TCPState#tcp{buff = <<>>, state = State#state{ref = NewRef, step = Step}}};
 
@@ -67,7 +67,7 @@ handle_info({tcp, Buff}, #tcp{socket = Socket, state = #state{id = ChannelId, dt
                 pass %%异常报文丢弃
         end
               end, shuwa_smartmeter:parse_frame(dlt645, Buff, [])),
-    {NewRef, Step,Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
+    {NewRef, Step,_Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
 %%    lager:info("ack: DevAddr ~p ChannelId ~p Payload ~p", [DtuAddr, ChannelId,shuwa_utils:binary_to_hex(Payload)]),
     {noreply, TCPState#tcp{buff = <<>>, state = State#state{ref = NewRef, step = Step}}};
 
@@ -87,6 +87,7 @@ handle_info({deliver, _Topic, Msg}, #tcp{state = #state{id = ChannelId, step = r
 
 %% 接收抄表任务的ACK报文
 handle_info({tcp, Buff}, #tcp{state = #state{id = ChannelId, step = read_meter}} = TCPState) ->
+    shuwa_bridge:send_log(ChannelId, "from_dev:  ~p ", [ shuwa_utils:binary_to_hex(Buff)]),
     case shuwa_smartmeter:parse_frame(dlt645, Buff, []) of
         [#{<<"addr">> := Addr, <<"value">> := Value} | _] ->
             case shuwa_data:get({meter, ChannelId}) of
