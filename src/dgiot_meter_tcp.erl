@@ -34,48 +34,70 @@ init(TCPState) ->
     {ok, TCPState}.
 
 %%设备登录报文，登陆成功后，开始搜表
-handle_info({tcp, DtuAddr}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = <<>>} = State} = TCPState) ->
+handle_info({tcp, DtuAddr}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = <<>>, search = Search} = State} = TCPState) ->
     DTUIP = shuwa_evidence:get_ip(Socket),
     HexDtuAddr = shuwa_utils:binary_to_hex(DtuAddr),
     dgiot_meter:create_dtu(HexDtuAddr, ChannelId, DTUIP),
-    {Ref, Step,Payload} = shuwa_smartmeter:search_meter(tcp, undefined, TCPState, 1),
-    lager:info("DevAddr ~p ChannelId ~p Payload ~p", [HexDtuAddr, ChannelId,shuwa_utils:binary_to_hex(Payload)]),
-    {noreply, TCPState#tcp{buff = <<>>, state = State#state{dtuaddr = HexDtuAddr, ref = Ref, step = Step}}};
+    {DtuProductId, _, _} = shuwa_data:get({dtu, ChannelId}),
+    {NewRef, NewStep} =
+        case Search of
+            <<"nosearch">> ->
+                [shuwa_task:save_pnque(DtuProductId, DtuAddr, Meterproductid, Meteraddr) || #{<<"product">> := Meterproductid, <<"devaddr">> := Meteraddr} <- dgiot_meter:get_sub_device(DtuAddr)],
+                {undefined, read_meter};
+            <<"quick">> ->
+                shuwa_smartmeter:search_meter(tcp, undefined, TCPState, 0),
+                {undefined, search_meter};
+            _ ->
+                {Ref, Step, _Payload} = shuwa_smartmeter:search_meter(tcp, undefined, TCPState, 1),
+                {Ref, Step}
+        end,
+    {noreply, TCPState#tcp{buff = <<>>, state = State#state{dtuaddr = HexDtuAddr, ref = NewRef, step = NewStep}}};
 
 %%设备登录异常报文丢弃
 handle_info({tcp, ErrorBuff}, #tcp{state = #state{dtuaddr = <<>>}} = TCPState) ->
     lager:info("ErrorBuff ~p ", [ErrorBuff]),
     {noreply, TCPState#tcp{buff = <<>>}};
 
-
 %%定时器触发搜表
-handle_info(search_meter, #tcp{state =  #state{ref = Ref,id = ChannelId, dtuaddr = DtuAddr} = State} = TCPState) ->
-    {NewRef, Step,_Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
-%%    lager:info("timeout: DevAddr ~p ChannelId ~p Payload ~p", [DtuAddr, ChannelId,shuwa_utils:binary_to_hex(Payload)]),
+handle_info(search_meter, #tcp{state = #state{ref = Ref, id = ChannelId, dtuaddr = DtuAddr} = State} = TCPState) ->
+    {NewRef, Step, _Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
     {noreply, TCPState#tcp{buff = <<>>, state = State#state{ref = NewRef, step = Step}}};
 
 %%ACK报文触发搜表
-handle_info({tcp, Buff}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = DtuAddr, ref = Ref, step = search_meter} = State} = TCPState) ->
+handle_info({tcp, Buff}, #tcp{socket = Socket, state = #state{id = ChannelId, dtuaddr = DtuAddr, ref = Ref, step = search_meter, search = Search} = State} = TCPState) ->
     lager:info("from_dev: search_meter Buff ~p", [shuwa_utils:binary_to_hex(Buff)]),
+    lager:info("from_dev: parse_frame Buff ~p", [shuwa_smartmeter:parse_frame(dlt645, Buff, [])]),
+    {Rest, Frames} = shuwa_smartmeter:parse_frame(dlt645, Buff, []),
     lists:map(fun(X) ->
         case X of
             #{<<"addr">> := Addr} ->
                 lager:info("from_dev: search_meter Addr ~p", [Addr]),
                 DTUIP = shuwa_evidence:get_ip(Socket),
                 dgiot_meter:create_meter(shuwa_utils:binary_to_hex(Addr), ChannelId, DTUIP, DtuAddr);
-            _ ->
+            Other ->
+                lager:info("Other ~p", [Other]),
                 pass %%异常报文丢弃
         end
-              end, shuwa_smartmeter:parse_frame(dlt645, Buff, [])),
-    {NewRef, Step,_Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
-%%    lager:info("ack: DevAddr ~p ChannelId ~p Payload ~p", [DtuAddr, ChannelId,shuwa_utils:binary_to_hex(Payload)]),
-    {noreply, TCPState#tcp{buff = <<>>, state = State#state{ref = NewRef, step = Step}}};
+              end, Frames),
+    case Search of
+        <<"normal">> ->
+            {NewRef, Step, _Payload} = shuwa_smartmeter:search_meter(tcp, Ref, TCPState, 1),
+            {noreply, TCPState#tcp{buff = Rest, state = State#state{ref = NewRef, step = Step}}};
+        _ ->
+            case length(Frames) > 0 of
+                true ->
+                    {noreply, TCPState#tcp{buff = Rest, state = State#state{ref = undefined, step = read_meter}}};
+                false ->
+                    {noreply, TCPState#tcp{buff = Rest, state = State#state{ref = undefined, step = search_meter}}}
+            end
+    end;
 
 %%接受抄表任务命令抄表
 handle_info({deliver, _Topic, Msg}, #tcp{state = #state{id = ChannelId, step = read_meter}} = TCPState) ->
+    shuwa_bridge:send_log(ChannelId, "Topic ~p Msg  ~p", [shuwa_mqtt:get_topic(Msg), shuwa_mqtt:get_payload(Msg)]),
     case binary:split(shuwa_mqtt:get_topic(Msg), <<$/>>, [global, trim]) of
         [<<"thing">>, _ProductId, _DevAddr] ->
-            [#{<<"thingdata">> := ThingData}|_] = jsx:decode(shuwa_mqtt:get_payload(Msg), [{labels, binary}, return_maps]),
+            [#{<<"thingdata">> := ThingData} | _] = jsx:decode(shuwa_mqtt:get_payload(Msg), [{labels, binary}, return_maps]),
             Payload = shuwa_smartmeter:to_frame(ThingData),
             shuwa_bridge:send_log(ChannelId, "from_task: ~ts:  ~ts ", [_Topic, unicode:characters_to_list(shuwa_mqtt:get_payload(Msg))]),
             lager:info("task->dev: Payload ~p", [shuwa_utils:binary_to_hex(Payload)]),
@@ -87,8 +109,10 @@ handle_info({deliver, _Topic, Msg}, #tcp{state = #state{id = ChannelId, step = r
 
 %% 接收抄表任务的ACK报文
 handle_info({tcp, Buff}, #tcp{state = #state{id = ChannelId, step = read_meter}} = TCPState) ->
-    shuwa_bridge:send_log(ChannelId, "from_dev:  ~p ", [ shuwa_utils:binary_to_hex(Buff)]),
-    case shuwa_smartmeter:parse_frame(dlt645, Buff, []) of
+    shuwa_bridge:send_log(ChannelId, "from_dev:  ~p ", [shuwa_utils:binary_to_hex(Buff)]),
+    lager:info("Buff ~p", [shuwa_utils:binary_to_hex(Buff)]),
+    {Rest, Frames} = shuwa_smartmeter:parse_frame(dlt645, Buff, []),
+    case Frames of
         [#{<<"addr">> := Addr, <<"value">> := Value} | _] ->
             case shuwa_data:get({meter, ChannelId}) of
                 {ProductId, _ACL, _Properties} -> DevAddr = shuwa_utils:binary_to_hex(Addr),
@@ -98,7 +122,7 @@ handle_info({tcp, Buff}, #tcp{state = #state{id = ChannelId, step = read_meter}}
             end;
         _ -> pass
     end,
-    {noreply, TCPState#tcp{buff = <<>>}};
+    {noreply, TCPState#tcp{buff = Rest}};
 
 %% 异常报文丢弃
 %% {stop, TCPState} | {stop, Reason} | {ok, TCPState} | ok | stop

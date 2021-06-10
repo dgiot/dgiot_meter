@@ -19,7 +19,8 @@
 -include("dgiot_meter.hrl").
 -export([
     create_dtu/3,
-    create_meter/4
+    create_meter/4,
+    get_sub_device/1
 ]).
 
 -define(APP, ?MODULE).
@@ -27,34 +28,53 @@
 %%新设备
 create_dtu(DtuAddr, ChannelId, DTUIP) ->
     lager:info("~p", [shuwa_data:get({dtu, ChannelId})]),
-    {ProductId, Acl, _Properties} = shuwa_data:get({dtu, ChannelId}),
-    Requests = #{
-        <<"devaddr">> => DtuAddr,
-        <<"name">> => <<"DTU_", DtuAddr/binary>>,
-        <<"ip">> => DTUIP,
-        <<"isEnable">> => true,
-        <<"product">> => ProductId,
-        <<"ACL">> => Acl,
-        <<"status">> => <<"ONLINE">>,
-        <<"brand">> => <<"DTU", DtuAddr/binary>>,
-        <<"devModel">> => <<"DTU_">>
-    },
-    shuwa_shadow:create_device(Requests).
+    case shuwa_data:get({dtu, ChannelId}) of
+        {ProductId, Acl, _Properties} ->
+            Requests = #{
+                <<"devaddr">> => DtuAddr,
+                <<"name">> => <<"DTU_", DtuAddr/binary>>,
+                <<"ip">> => DTUIP,
+                <<"isEnable">> => true,
+                <<"product">> => ProductId,
+                <<"ACL">> => Acl,
+                <<"status">> => <<"ONLINE">>,
+                <<"brand">> => <<"DTU", DtuAddr/binary>>,
+                <<"devModel">> => <<"DTU_">>
+            },
+            shuwa_shadow:create_device(Requests);
+        _ ->
+            pass
+    end.
 
 create_meter(MeterAddr, ChannelId, DTUIP, DtuAddr) ->
-    {ProductId, ACL, _Properties} = shuwa_data:get({meter, ChannelId}),
-    Requests = #{
-        <<"devaddr">> => MeterAddr,
-        <<"name">> => <<"Meter_", MeterAddr/binary>>,
-        <<"ip">> => DTUIP,
-        <<"isEnable">> => true,
-        <<"product">> => ProductId,
-        <<"ACL">> => ACL,
-        <<"route">> => #{DtuAddr => MeterAddr},
-        <<"status">> => <<"ONLINE">>,
-        <<"brand">> => <<"Meter", MeterAddr/binary>>,
-        <<"devModel">> => <<"Meter">>
-    },
-    shuwa_shadow:create_device(Requests),
-    {DtuProductId, _, _} = shuwa_data:get({dtu, ChannelId}),
-    shuwa_task:save_pnque(DtuProductId, DtuAddr, ProductId, MeterAddr).
+    lager:info("MeterAddr ~p", [MeterAddr]),
+    case shuwa_data:get({meter, ChannelId}) of
+        {ProductId, ACL, _Properties} ->
+            Requests = #{
+                <<"devaddr">> => MeterAddr,
+                <<"name">> => <<"Meter_", MeterAddr/binary>>,
+                <<"ip">> => DTUIP,
+                <<"isEnable">> => true,
+                <<"product">> => ProductId,
+                <<"ACL">> => ACL,
+                <<"route">> => #{DtuAddr => MeterAddr},
+                <<"status">> => <<"ONLINE">>,
+                <<"brand">> => <<"Meter", MeterAddr/binary>>,
+                <<"devModel">> => <<"Meter">>
+            },
+            shuwa_shadow:create_device(Requests),
+            {DtuProductId, _, _} = shuwa_data:get({dtu, ChannelId}),
+            shuwa_task:save_pnque(DtuProductId, DtuAddr, ProductId, MeterAddr);
+        _ ->
+            pass
+    end.
+
+get_sub_device(DtuAddr) ->
+    Query = #{<<"keys">> => [<<"devaddr">>, <<"product">>],
+        <<"where">> => #{<<"route.", DtuAddr/binary>> => #{<<"$regex">> => <<".+">>}},
+        <<"order">> => <<"devaddr">>, <<"limit">> => 256},
+    case shuwa_parse:query_object(<<"Device">>, Query) of
+        {ok, #{<<"results">> := []}} -> [];
+        {ok, #{<<"results">> := List}} -> List;
+        _ -> []
+    end.

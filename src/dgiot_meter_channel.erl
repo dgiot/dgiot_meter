@@ -107,6 +107,33 @@
         description => #{
             zh => <<"侦听端口"/utf8>>
         }
+    },
+    <<"search">> => #{
+        order => 2,
+        type => enum,
+        required => false,
+        default => <<"quick"/utf8>>,
+        enum => [<<"nosearch">>, <<"quick">>, <<"normal">>],
+        title => #{
+            zh => <<"搜表模式"/utf8>>
+        },
+        description => #{
+            zh => <<"搜表模式:nosearch|quick|normal"/utf8>>
+        }
+    },
+    <<"ico">> => #{
+        order => 102,
+        type => string,
+        required => false,
+        default => <<"http://dgiot-1253666439.cos.ap-shanghai-fsi.myqcloud.com/shuwa_tech/zh/product/dgiot/channel/meter.jpg">>,
+        title => #{
+            en => <<"channel ICO">>,
+            zh => <<"通道ICO"/utf8>>
+        },
+        description => #{
+            en => <<"channel ICO">>,
+            zh => <<"通道ICO"/utf8>>
+        }
     }
 }).
 
@@ -116,24 +143,26 @@ start(ChannelId, ChannelArgs) ->
 %% 通道初始化
 init(?TYPE, ChannelId, #{
     <<"port">> := Port,
-    <<"product">> := Products}) ->
+    <<"product">> := Products,
+    <<"search">> := Search}) ->
     lists:map(fun(X) ->
         case X of
             {ProductId, #{<<"ACL">> := Acl, <<"nodeType">> := 1}} ->
-                {ok, #{<<"thing">> := #{<<"properties">> := Properties} }} = shuwa_shadow:lookup_prod(ProductId),
+                {ok, #{<<"thing">> := #{<<"properties">> := Properties}}} = shuwa_shadow:lookup_prod(ProductId),
                 shuwa_data:insert({dtu, ChannelId}, {ProductId, Acl, Properties});
             {ProductId, #{<<"ACL">> := Acl}} ->
-                {ok, #{<<"thing">> := #{<<"properties">> := Properties} }} = shuwa_shadow:lookup_prod(ProductId),
+                {ok, #{<<"thing">> := #{<<"properties">> := Properties}}} = shuwa_shadow:lookup_prod(ProductId),
                 shuwa_data:insert({meter, ChannelId}, {ProductId, Acl, Properties});
             _ ->
-                lager:info("X ~p",[X]),
+                lager:info("X ~p", [X]),
                 pass
         end
               end, Products),
     shuwa_metrics:start(dgiot_meter),
     shuwa_data:set_consumer(ChannelId, 20),
     State = #state{
-        id = ChannelId
+        id = ChannelId,
+        search = Search
     },
     {ok, State, dgiot_meter_tcp:start(Port, State)};
 

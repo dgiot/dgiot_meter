@@ -21,5 +21,6 @@
     env = #{},
     dtuaddr = <<>>,
     step = login,
-    ref = undefined
+    ref = undefined,
+    search = <<"quick">>
 }).
